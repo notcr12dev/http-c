@@ -124,7 +124,15 @@ int main(int argc, char **argv) {
 		char path[256] = {0};
 		sscanf(buffer, "%15s %255s", method, path);
 
-		printf("[REQ] %s %s\n", method, path);
+		char *query_string = strchr(path, '?');
+		if (query_string != NULL) {
+			*query_string = '\0';
+			query_string++;
+		} else {
+			query_string = "";
+		}
+
+		printf("[REQ] %s %s %s\n", method, path, query_string);
 
 		// PATH MANAGER
 
@@ -174,36 +182,67 @@ int main(int argc, char **argv) {
 			} 
 			else if (strcmp(path, "/api/data") == 0) {
 					time_t now = time(NULL);
-					char json_body[4096] = "[";
-					bool first_item = true;
-
-					for (int i = 0; i < MAX_ITEMS; i++){
-						if (dicc[i].ocuppied) {
-							if (dicc[i].expires_at > 0 && now >= dicc[i].expires_at) {
-								dicc[i].ocuppied = false;
-								printf("[TTL EXPIRED] Clave '%s' eliminada automáticamente\n", dicc[i].key);
-								continue; 
-							}
-
-							char item_str[512];
-							snprintf(item_str, sizeof(item_str), "%s{\"key\": \"%s\", \"value\": \"%s\"}",
-							first_item ? "" : ",", dicc[i].key, dicc[i].value);
-							strcat(json_body, item_str);
-							first_item = false;
-						}
-					}
-					strcat(json_body, "]");
-
-					char header[4600];
-					snprintf(header, sizeof(header),
-						"HTTP/1.1 200 OK\r\n"
-						"Content-Type: application/json; charset=UTF-8\r\n"
-						"Connection: close\r\n"
-						"\r\n"
-						"%s", json_body);
+					char search_key[KEY_SIZE] = {0};
 					
-					write(client_sockfd, header, strlen(header));
-			} 
+					bool indv = (sscanf(query_string, "key=%63s", search_key) == 1);
+
+					if (indv) {
+						int idx = -1;
+						// Buscar la clave solicitada en el diccionario
+						for (int i = 0; i < MAX_ITEMS; i++) {
+							if (dicc[i].ocuppied && strcmp(dicc[i].key, search_key) == 0) {
+								// Validar si ya expiró por TTL
+								if (dicc[i].expires_at > 0 && now >= dicc[i].expires_at) {
+									dicc[i].ocuppied = false;
+									break;
+								}
+								idx = i;
+								break;
+							}
+						}
+
+						char json_res[512];
+						if (idx != -1) {
+							snprintf(json_res, sizeof(json_res), 
+								"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+								"{\"key\": \"%s\", \"value\": \"%s\"}", dicc[idx].key, dicc[idx].value);
+						} else {
+							snprintf(json_res, sizeof(json_res), 
+								"HTTP/1.1 404 Not Found\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+								"{\"error\": \"Clave no encontrada o expirada\"}");
+						}
+						write(client_sockfd, json_res, strlen(json_res));
+					} 
+					else {
+						char json_body[4096] = "[";
+						bool first_item = true;
+
+						for (int i = 0; i < MAX_ITEMS; i++){
+							if (dicc[i].ocuppied) {
+								if (dicc[i].expires_at > 0 && now >= dicc[i].expires_at) {
+									dicc[i].ocuppied = false;
+									printf("[TTL EXPIRED] Clave '%s' eliminada automáticamente\n", dicc[i].key);
+									continue; 
+								}
+
+								char item_str[512];
+								snprintf(item_str, sizeof(item_str), "%s{\"key\": \"%s\", \"value\": \"%s\"}",
+									first_item ? "" : ",", dicc[i].key, dicc[i].value);
+								strcat(json_body, item_str);
+								first_item = false;
+							}
+						}
+						strcat(json_body, "]");
+
+						char header[4600];
+						snprintf(header, sizeof(header),
+							"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+							"%s", json_body);
+						
+						write(client_sockfd, header, strlen(header));
+					}
+			}
+
 			else {
 				char *file_to_open = (strcmp(path, "/") == 0) ? filename_html : (path + 1);
 
