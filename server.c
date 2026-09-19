@@ -24,9 +24,26 @@ int main(int argc, char **argv) {
 	struct sockaddr_in client_address, server_address;
 	unsigned short server_port = 12345u;
 	
-	if (argc > 1) {
-		server_port = strtol(argv[1], NULL, 10);
+	char *filename_html;
+
+	for (int i = 1; i < argc; ++i) {
+		char *endptr;
+		long val = strtol(argv[i], &endptr, 10);
+
+		if (*endptr == '\0' && argv[i][0] != '\0') {
+			if (val <= 65535) {
+				server_port = (unsigned short)val;
+			} else {
+				printf("The port is outside the valid range; Selected port: %lu", val);
+				return 1;
+			}
+		} else {
+			filename_html = argv[i];
+		}
 	}
+	// if (argc == 1) {
+	// 	server_port = strtol(argv[1], NULL, 10);
+	// }
 
 	protoent = getprotobyname(protoname); // Indicamos que queremos una estructura con el protcolo 'tcp'
 	if (protoent == NULL) {
@@ -66,7 +83,7 @@ int main(int argc, char **argv) {
 		perror("listen");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stderr, "listen on port %d\n", server_port);
+	fprintf(stderr, "listen on port %u\n\n HTML file: %s", server_port, filename_html);
 
 	while(1) {
 		client_len = sizeof(client_address);
@@ -93,7 +110,9 @@ int main(int argc, char **argv) {
 		char path[256] = {0};
 		sscanf(buffer, "%15s %255s", method, path);
 
-		char *file_html = (strcmp(path, "/") == 0) ? "index.html" : (path + 1);
+		
+		char *file_html = (strcmp(path, "/") == 0) ? filename_html  : (path + 1);
+		
 
 		FILE *file = fopen(file_html, "r");
 		if (file == NULL) {
