@@ -110,39 +110,147 @@ int main(int argc, char **argv) {
 		char path[256] = {0};
 		sscanf(buffer, "%15s %255s", method, path);
 
-		
-		char *file_html = (strcmp(path, "/") == 0) ? filename_html  : (path + 1);
-		
+		printf("[REQ] %s %s\n", method, path);
 
-		FILE *file = fopen(file_html, "r");
-		if (file == NULL) {
-			char *error_404 =  
-				"HTTP/1.1 404 not Found\r\n"
-				"Content-Type : text/html; charset=UTF-8\r\n"
-				"Connection: close\r\n"
-				"\r\n"
-				"<h1>Error 404: Error File</h1>";
-			write(client_sockfd, error_404, strlen(error_404));
-			printf("Error File\n\n %s", error_404);
-		} else {
-			char *header =
-				"HTTP/1.1 200 OK\r\n"
-            	"Content-Type: text/html; charset=UTF-8\r\n"
-            	"Connection: close\r\n"
-           		"\r\n";
-			write(client_sockfd, header, strlen(header));
+		// PATH MANAGER
 
-			char file_buffer[BUFSIZ];
-			size_t bytes_reads;
-			while ((bytes_reads = fread(file_buffer, 1,
-				 sizeof(file_buffer),
-				  file)) > 0) {
-					write(client_sockfd, file_buffer, bytes_reads);
-			
+		// GET
+		if (strcmp(method, "GET") == 0) //(strcmp) Sirve para comparar
+		{
+
+			//Endpoint: GET /
+			// if(strcmp(path, "/") == 0){
+			// 	FILE *file = fopen(filename_html, "r");
+			// 	if (file == NULL) {
+			// 		char *error_404 =  
+			// 			"HTTP/1.1 404 not Found\r\n"
+			// 			"Content-Type : text/html; charset=UTF-8\r\n"
+			// 			"Connection: close\r\n"
+			// 			"\r\n"
+			// 			"<h1>Error 404: Error File</h1>";
+			// 		write(client_sockfd, error_404, strlen(error_404));
+			// 		printf("Error File\n\n %s", error_404);
+			// 	} else {
+			// 		char *header =  
+			// 			"HTTP/1.1 200 OK\r\n"
+			// 			"Content-Type: text/html; charset=UTF-8\r\n"
+			// 			"Connection: close\r\n"
+			// 			"\r\n";
+			// 		write(client_sockfd, header, strlen(header));
+
+			// 		char file_buffer[BUFSIZ];
+			// 		size_t bytes_reads;
+			// 		while ((bytes_reads = fread(file_buffer, 1,
+			// 			sizeof(file_buffer),
+			// 			file)) > 0) {
+			// 				write(client_sockfd, file_buffer, bytes_reads);
+					
+			// 		}
+			// 		fclose(file);
+			// 	}
+			//Endpoint: GET /api/status
+			if (strcmp(path, "/api/status") == 0) {
+					char *json_res =
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Type: text/html; charset=UTF-8\r\n"
+						"Connection: close\r\n"
+						"\r\n"
+						"{\"status\": \"running\", \"msg\": \"Servidor C activo\"}";
+					write(client_sockfd, json_res, strlen(json_res));
+			} 
+			else {
+				char *file_to_open = (strcmp(path, "/") == 0) ? filename_html : (path + 1);
+
+				FILE *file = fopen(file_to_open, "r");
+				if (file == NULL) {
+					printf("[DEBUG] No se pudo abrir el archivo: '%s'\n", file_to_open);
+
+					char *error_404 =  
+						"HTTP/1.1 404 Not Found\r\n"
+						"Content-Type: text/html; charset=UTF-8\r\n"
+						"Connection: close\r\n"
+						"\r\n"
+						"<h1>Error 404: Archivo No Encontrado</h1>";
+					write(client_sockfd, error_404, strlen(error_404));
+				} else {
+					char *header =
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Type: text/html; charset=UTF-8\r\n"
+						"Connection: close\r\n"
+						"\r\n";
+					write(client_sockfd, header, strlen(header));
+
+					char file_buffer[BUFSIZ];
+					size_t bytes_reads;
+					while ((bytes_reads = fread(file_buffer, 1, sizeof(file_buffer), file)) > 0) {
+						write(client_sockfd, file_buffer, bytes_reads);
+					}
+					fclose(file);
+				}
 			}
-			fclose(file);
-
 		}
+
+		// POST
+		else if (strcmp(method, "POST") == 0) {
+			
+			// Search body
+			char *body = strstr(buffer, "\r\n\r\n");
+			if (body != NULL) {
+				body += 4;
+			} else {
+				body = "";
+			}
+
+			if (strcmp(path, "/api/data") == 0) {
+				printf("[POST BODY] Recibido: %s\n", body);
+
+				// Confirm the request
+				char response[512];
+				snprintf(response, sizeof(response),
+					"HTTP/1.1 201 Created\r\n"
+					"Content-Type: application/json\r\n"
+					"Connection: close\r\n"
+					"\r\n"
+					"{\"success\": true, \"datos_guardados\": \"%s\"}", body
+				);
+				write(client_sockfd, response, strlen(response));
+				
+
+			} else {
+				char *error_404 =  
+						"HTTP/1.1 404 not Found\r\n"
+						"Content-Type : text/html; charset=UTF-8\r\n"
+						"Connection: close\r\n"
+						"\r\n"
+						"<h1>Error 404: Error File</h1>";
+					write(client_sockfd, error_404, strlen(error_404));
+					printf("Error File\n\n %s", error_404);
+				}
+			
+		}
+		
+		// PUT
+		else if (strcmp(method, "PUT") == 0){
+			
+			// Endpoint: PUT /api/update
+			if (strcmp(path, "/api/update") == 0) {
+				char *json_res = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"msg\": \"Recurso actualizado con PUT\"}";
+				write(client_sockfd, json_res, strlen(json_res));
+			} else {
+				char *error_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
+				write(client_sockfd, error_404, strlen(error_404));
+			}
+		}
+
+		else {
+			char *error_405 = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nMethod not allowed.";
+			write(client_sockfd, error_405, strlen(error_405));
+		}
+
+		
+
+		
+		
 		close(client_sockfd);
 
 		
