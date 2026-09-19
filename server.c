@@ -201,14 +201,14 @@ int main(int argc, char **argv) {
 							}
 						}
 
-						char json_res[512];
+						char json_res[1024];
 						if (idx != -1) {
 							snprintf(json_res, sizeof(json_res), 
-								"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+								"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
 								"{\"key\": \"%s\", \"value\": \"%s\"}", dicc[idx].key, dicc[idx].value);
 						} else {
 							snprintf(json_res, sizeof(json_res), 
-								"HTTP/1.1 404 Not Found\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+								"HTTP/1.1 404 Not Found\r\nContent-Type: application/json; charset=UTF-8\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
 								"{\"error\": \"Clave no encontrada o expirada\"}");
 						}
 						write(client_sockfd, json_res, strlen(json_res));
@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
 
 						char header[4600];
 						snprintf(header, sizeof(header),
-							"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nConnection: close\r\n\r\n"
+							"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=UTF-8\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
 							"%s", json_body);
 						
 						write(client_sockfd, header, strlen(header));
@@ -334,6 +334,7 @@ int main(int argc, char **argv) {
 						snprintf(response, sizeof(response),
 							"HTTP/1.1 200 OK\r\n"
 							"Content-Type: application/json\r\n"
+							"Access-Control-Allow-Origin: *\r\n"
 							"Connection: close\r\n"
 							"\r\n"
 							"{\"success\": true, \"key\": \"%s\", \"value\": \"%s\", \"ttl_seconds\": %d}", 
