@@ -13,10 +13,12 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <time.h>
 
 struct KeyValue {
 	char key[KEY_SIZE];
 	char value[VALUE_SIZE];
+	time_t expires_at;
 	bool ocuppied;
 };
 
@@ -171,11 +173,18 @@ int main(int argc, char **argv) {
 					write(client_sockfd, json_res, strlen(json_res));
 			} 
 			else if (strcmp(path, "/api/data") == 0) {
+					time_t now = time(NULL);
 					char json_body[4096] = "[";
 					bool first_item = true;
 
 					for (int i = 0; i < MAX_ITEMS; i++){
 						if (dicc[i].ocuppied) {
+							if (dicc[i].expires_at > 0 && now >= dicc[i].expires_at) {
+								dicc[i].ocuppied = false;
+								printf("[TTL EXPIRED] Clave '%s' eliminada automáticamente\n", dicc[i].key);
+								continue; 
+							}
+
 							char item_str[512];
 							snprintf(item_str, sizeof(item_str), "%s{\"key\": \"%s\", \"value\": \"%s\"}",
 							first_item ? "" : ",", dicc[i].key, dicc[i].value);
@@ -243,13 +252,20 @@ int main(int argc, char **argv) {
 
 			char req_key[KEY_SIZE] = {0};
 			char req_value[VALUE_SIZE] = {0};
+			int req_ttl = 0;
 			
+			int parsed = sscanf(body, "%63[^=]=%255[^&]&ttl=%d", req_key, req_value, &req_ttl);
+			
+			if (parsed < 2) {
+					parsed = sscanf(body, "%63[^=]=%255s", req_key, req_value);
+			}
+
 			// Parseamos el body con formato "clave=valor"
-			if (sscanf(body, "%63[^=]=%255s", req_key, req_value) == 2) {
+			if (parsed >= 2) {
 				int found_idx = -1;
 				int first_idx = -1;
 
-				// Buscar si la clave ya existe o encontrar un hueco libre
+				// Search if key exists
 				for (int i = 0; i < MAX_ITEMS; i++) {
 					if (dicc[i].ocuppied && strcmp(dicc[i].key, req_key) == 0) {
 						found_idx = i;
@@ -268,15 +284,23 @@ int main(int argc, char **argv) {
 					strncpy(dicc[target_idx].value, req_value, VALUE_SIZE - 1);
 					dicc[target_idx].ocuppied = true;
 
-					char response[512];
-					snprintf(response, sizeof(response),
-						"HTTP/1.1 200 OK\r\n"
-						"Content-Type: application/json\r\n"
-						"Connection: close\r\n"
-						"\r\n"
-						"{\"success\": true, \"msg\": \"Guardado correctamente\", \"key\": \"%s\", \"value\": \"%s\"}", 
-						req_key, req_value);
-					write(client_sockfd, response, strlen(response));
+					if (req_ttl > 0) {
+						dicc[target_idx].expires_at = time(NULL) + req_ttl;
+						printf("[TTL SET] Key '%s' will expire in %d s\n", req_key, req_ttl);
+					} else {
+						dicc[target_idx].expires_at = 0;
+					}
+
+					char response[1024]; // Búfer ampliado para evitar truncamiento
+						snprintf(response, sizeof(response),
+							"HTTP/1.1 200 OK\r\n"
+							"Content-Type: application/json\r\n"
+							"Connection: close\r\n"
+							"\r\n"
+							"{\"success\": true, \"key\": \"%s\", \"value\": \"%s\", \"ttl_seconds\": %d}", 
+							req_key, req_value, req_ttl);
+						write(client_sockfd, response, strlen(response));
+						
 				} else {
 					char *err = "HTTP/1.1 507 Insufficient Storage\r\n\r\n{\"error\": \"Cache llena\"}";
 					write(client_sockfd, err, strlen(err));
