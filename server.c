@@ -1,5 +1,7 @@
 #define _XOPEN_SOURCE 700
-
+#define MAX_ITEMS 10
+#define VALUE_SIZE 256
+#define KEY_SIZE 64
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,6 +13,14 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+struct KeyValue {
+	char key[KEY_SIZE];
+	char value[VALUE_SIZE];
+	bool ocuppied;
+};
+
+struct KeyValue dicc[MAX_ITEMS] = {0};
 
 int main(int argc, char **argv) {
 	char buffer[BUFSIZ];
@@ -85,6 +95,8 @@ int main(int argc, char **argv) {
 	}
 	fprintf(stderr, "listen on port %u\n\n HTML file: %s", server_port, filename_html);
 
+	//Cache
+	// char cache[512] = "{\"msg\": \"No data\"}";
 	while(1) {
 		client_len = sizeof(client_address);
 		client_sockfd = accept(
@@ -158,6 +170,31 @@ int main(int argc, char **argv) {
 						"{\"status\": \"running\", \"msg\": \"Servidor C activo\"}";
 					write(client_sockfd, json_res, strlen(json_res));
 			} 
+			else if (strcmp(path, "/api/data") == 0) {
+					char json_body[4096] = "[";
+					bool first_item = true;
+
+					for (int i = 0; i < MAX_ITEMS; i++){
+						if (dicc[i].ocuppied) {
+							char item_str[512];
+							snprintf(item_str, sizeof(item_str), "%s{\"key\": \"%s\", \"value\": \"%s\"}",
+							first_item ? "" : ",", dicc[i].key, dicc[i].value);
+							strcat(json_body, item_str);
+							first_item = false;
+						}
+					}
+					strcat(json_body, "]");
+
+					char header[4600];
+					snprintf(header, sizeof(header),
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Type: application/json; charset=UTF-8\r\n"
+						"Connection: close\r\n"
+						"\r\n"
+						"%s", json_body);
+					
+					write(client_sockfd, header, strlen(header));
+			} 
 			else {
 				char *file_to_open = (strcmp(path, "/") == 0) ? filename_html : (path + 1);
 
@@ -192,7 +229,7 @@ int main(int argc, char **argv) {
 
 		// POST
 		else if (strcmp(method, "POST") == 0) {
-			
+		
 			// Search body
 			char *body = strstr(buffer, "\r\n\r\n");
 			if (body != NULL) {
@@ -202,30 +239,54 @@ int main(int argc, char **argv) {
 			}
 
 			if (strcmp(path, "/api/data") == 0) {
-				printf("[POST BODY] Recibido: %s\n", body);
+			printf("[POST BODY] Recibido: %s\n", body);
 
-				// Confirm the request
-				char response[512];
-				snprintf(response, sizeof(response),
-					"HTTP/1.1 201 Created\r\n"
-					"Content-Type: application/json\r\n"
-					"Connection: close\r\n"
-					"\r\n"
-					"{\"success\": true, \"datos_guardados\": \"%s\"}", body
-				);
-				write(client_sockfd, response, strlen(response));
-				
+			char req_key[KEY_SIZE] = {0};
+			char req_value[VALUE_SIZE] = {0};
+			
+			// Parseamos el body con formato "clave=valor"
+			if (sscanf(body, "%63[^=]=%255s", req_key, req_value) == 2) {
+				int found_idx = -1;
+				int first_idx = -1;
 
-			} else {
-				char *error_404 =  
-						"HTTP/1.1 404 not Found\r\n"
-						"Content-Type : text/html; charset=UTF-8\r\n"
+				// Buscar si la clave ya existe o encontrar un hueco libre
+				for (int i = 0; i < MAX_ITEMS; i++) {
+					if (dicc[i].ocuppied && strcmp(dicc[i].key, req_key) == 0) {
+						found_idx = i;
+						break;
+					}
+					if (!dicc[i].ocuppied && first_idx == -1) {
+						first_idx = i;
+					}
+				}
+
+				int target_idx = (found_idx != -1) ? found_idx : first_idx;
+
+				if (target_idx != -1) {
+					// Guardar o actualizar los datos
+					strncpy(dicc[target_idx].key, req_key, KEY_SIZE - 1);
+					strncpy(dicc[target_idx].value, req_value, VALUE_SIZE - 1);
+					dicc[target_idx].ocuppied = true;
+
+					char response[512];
+					snprintf(response, sizeof(response),
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Type: application/json\r\n"
 						"Connection: close\r\n"
 						"\r\n"
-						"<h1>Error 404: Error File</h1>";
-					write(client_sockfd, error_404, strlen(error_404));
-					printf("Error File\n\n %s", error_404);
+						"{\"success\": true, \"msg\": \"Guardado correctamente\", \"key\": \"%s\", \"value\": \"%s\"}", 
+						req_key, req_value);
+					write(client_sockfd, response, strlen(response));
+				} else {
+					char *err = "HTTP/1.1 507 Insufficient Storage\r\n\r\n{\"error\": \"Cache llena\"}";
+					write(client_sockfd, err, strlen(err));
 				}
+			} else {
+				char *err = "HTTP/1.1 400 Bad Request\r\n\r\n{\"error\": \"Formato invalido. Usa clave=valor\"}";
+				write(client_sockfd, err, strlen(err));
+			}
+		}
+
 			
 		}
 		
@@ -236,6 +297,25 @@ int main(int argc, char **argv) {
 			if (strcmp(path, "/api/update") == 0) {
 				char *json_res = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"msg\": \"Recurso actualizado con PUT\"}";
 				write(client_sockfd, json_res, strlen(json_res));
+			} else {
+				char *error_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
+				write(client_sockfd, error_404, strlen(error_404));
+			}
+		}
+
+		// DELETE
+		else if (strcmp(method, "DELETE") == 0) {
+
+			// Endopint DELETE /api/delete
+			if (strcmp(path, "/api/delete") == 0) {
+				char *json_res = 
+					"HTTP/1.1 200 OK\r\n"
+					"Content-Type: application/json\r\n"
+					"Connection: close\r\n"
+					"\r\n"
+					"{\"success\": true, \"msg\": \"Recurso eliminado correctamente con DELETE\"}";
+				write(client_sockfd, json_res, strlen(json_res));
+			
 			} else {
 				char *error_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
 				write(client_sockfd, error_404, strlen(error_404));
