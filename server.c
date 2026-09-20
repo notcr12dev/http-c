@@ -293,10 +293,32 @@ int main(int argc, char **argv) {
 			char req_value[VALUE_SIZE] = {0};
 			int req_ttl = 0;
 			
-			int parsed = sscanf(body, "%63[^=]=%255[^&]&ttl=%d", req_key, req_value, &req_ttl);
+			char *k_ptr = strstr(body, "\"key\"");
+			char *v_ptr = strstr(body, "\"value\"");
+			char *t_ptr = strstr(body, "\"ttl\"");
+
+			// int parsed = sscanf(body, "%63[^=]=%255[^&]&ttl=%d", req_key, req_value, &req_ttl);
+			int parsed = 0;
+
+			if (k_ptr != NULL && v_ptr != NULL) {
+				/* Extraer el valor entre comillas del key*/
+				char *k_val = strchr(k_ptr, ':');
+				if (k_val) sscanf(k_val, ": \"%63[^\"]\"", req_key);
 			
-			if (parsed < 2) {
-					parsed = sscanf(body, "%63[^=]=%255s", req_key, req_value);
+				/* Extraer el valor entre comillas del value*/
+				char *v_val = strchr(v_ptr, ':');
+				if (v_val) sscanf(v_val, ": \"%255[^\"]\"", req_value);
+				
+				/* Extraer el numero entero si ttl existe*/
+				if (t_ptr != NULL) {
+						char *t_val = strchr(t_ptr, ':');
+						if (t_val) sscanf(t_val, ": %d", &req_ttl);
+				}
+
+				// Validacion de la extraccion
+				if (strlen(req_key) > 0 && strlen(req_key) > 0) {
+					parsed = 2;
+				}
 			}
 
 			// Parseamos el body con formato "clave=valor"
@@ -330,7 +352,7 @@ int main(int argc, char **argv) {
 						dicc[target_idx].expires_at = 0;
 					}
 
-					char response[1024]; // Búfer ampliado para evitar truncamiento
+					char response[1024];
 						snprintf(response, sizeof(response),
 							"HTTP/1.1 200 OK\r\n"
 							"Content-Type: application/json\r\n"

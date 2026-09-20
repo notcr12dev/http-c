@@ -1,5 +1,5 @@
 // Shared base URL configuration for your C backend server
-const API_URL = "http://localhost:3000/api/data";
+const API_URL = "http://localhost:300/api/data";
 
 /**
  * Fetches an individual key-value item from the C server cache
@@ -35,20 +35,21 @@ async function getData() {
  */
 async function saveData(key, value, ttlSeconds = 0) {
     try {
-        // Construct the body structure into a "key=value" URL string format
-        let formBody = `key=${encodeURIComponent(key)}&value=${encodeURIComponent(value)}`;
+        const payload = { key, value };
         
         // Append the optional TTL parameter if provided
         if (ttlSeconds > 0) {
-            formBody += `&ttl=${ttlSeconds}`;
+            payload.ttl = ttlSeconds;
         }
 
         const response = await fetch(API_URL, {
             method: "POST",
             headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
+                
+                "Content-Type": "application/json"
             },
-            body: formBody
+           
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
@@ -56,13 +57,14 @@ async function saveData(key, value, ttlSeconds = 0) {
         }
 
         const result = await response.json();
-        console.log("Successfully saved data in C cache server!", result);
+        console.log("Successfully saved JSON data in C cache server!", result);
         return result;
 
     } catch (error) {
         console.error("Failed to save data into server cache:", error);
     }
 }
+
 
 
 getData();
